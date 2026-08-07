@@ -26,14 +26,14 @@ exports.handler = async (event) => {
 
     const payload = JSON.stringify({
       contents: [{
-        parts: [{ text: `Eres el asistente virtual de AMPERIO (servicios eléctricos). Responde breve y amablemente: ${mensaje}` }]
+        parts: [{ text: `Eres el asistente virtual de AMPERIO (servicios eléctricos). Responde de forma breve y amable: ${mensaje}` }]
       }]
     });
 
     const respuestaIA = await new Promise((resolve) => {
       const req = https.request({
         hostname: 'generativelanguage.googleapis.com',
-        path: `/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        path: `/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
