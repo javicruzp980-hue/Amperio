@@ -20,13 +20,13 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ respuesta: "Falta configurar la variable GEMINI_API_KEY en Netlify." })
+        body: JSON.stringify({ respuesta: "El servicio se encuentra en mantenimiento. Por favor contáctanos por WhatsApp." })
       };
     }
 
     const payload = JSON.stringify({
       contents: [{
-        parts: [{ text: `Eres el asistente virtual de AMPERIO (servicios eléctricos). Responde de forma breve y amable: ${mensaje}` }]
+        parts: [{ text: `Eres el asistente virtual experto de AMPERIO (servicios eléctricos). Responde de forma breve, amable y profesional al siguiente mensaje: ${mensaje}` }]
       }]
     });
 
@@ -46,18 +46,18 @@ exports.handler = async (event) => {
           try {
             const parsed = JSON.parse(data);
             if (parsed.error) {
-              resolve(`Error de Google (${parsed.error.code}): ${parsed.error.message}`);
+              resolve("En este momento estoy recibiendo muchas consultas. Por favor inténtalo de nuevo en unos segundos o escríbenos por WhatsApp.");
             } else {
               const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-              resolve(text || "Google no devolvió ningún texto.");
+              resolve(text || "No pude procesar la respuesta. Inténtalo de nuevo.");
             }
           } catch (e) {
-            resolve("Error al procesar la respuesta de la IA.");
+            resolve("Ocurrió un detalle técnico. Contáctanos por WhatsApp para atenderte.");
           }
         });
       });
 
-      req.on('error', (err) => resolve(`Error de conexión: ${err.message}`));
+      req.on('error', () => resolve("Servicio no disponible momentáneamente. Por favor escríbenos por WhatsApp."));
       req.write(payload);
       req.end();
     });
@@ -72,7 +72,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ respuesta: `Error del servidor: ${err.message}` })
+      body: JSON.stringify({ respuesta: "Ocurrió un error inesperado. Contáctanos por WhatsApp." })
     };
   }
 };
