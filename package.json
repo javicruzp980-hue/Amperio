@@ -1,8 +1,12 @@
 {
   "name": "amperio-web",
   "version": "1.0.0",
+  "type": "module",
   "dependencies": {
     "@google/generative-ai": "^0.15.0",
-    "mercadopago": "^2.0.9"
+    "mercadopago": "^2.0.9",
+    "firebase-admin": "^12.1.0",
+    "resend": "^3.4.0"
   }
 }
+
