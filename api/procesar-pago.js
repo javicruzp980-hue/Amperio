@@ -46,12 +46,8 @@ export default async function handler(req, res) {
       console.log('DEBUG: falló validación de payment_method_id');
       return res.status(400).json({ error: 'Datos de pago incompletos' });
     }
-    // Los pagos con tarjeta requieren token; los de tipo ticket (OXXO, etc.) no lo generan
-    const requiereToken = paymentData.payment_type_id !== 'ticket' && paymentData.payment_type_id !== 'atm';
-    if (requiereToken && !paymentData.token) {
-      console.log('DEBUG: falló validación de token, payment_type_id=', paymentData.payment_type_id);
-      return res.status(400).json({ error: 'Datos de pago incompletos (falta token de tarjeta)' });
-    }
+    // No forzamos el token aquí: los métodos en efectivo (OXXO, etc.) no lo generan
+    // y el Brick no siempre manda payment_type_id. Mercado Pago valida esto por su cuenta.
     if (!cliente || !cliente.nombre || !cliente.telefono) {
       console.log('DEBUG: falló validación de datos del cliente');
       return res.status(400).json({ error: 'Datos del cliente incompletos' });
