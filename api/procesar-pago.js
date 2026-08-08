@@ -38,15 +38,22 @@ export default async function handler(req, res) {
   try {
     const { paymentData, cliente } = req.body;
 
+    // LOG TEMPORAL DE DIAGNÓSTICO — quitar después de resolver el problema
+    console.log('DEBUG paymentData recibido:', JSON.stringify(paymentData));
+    console.log('DEBUG cliente recibido:', JSON.stringify(cliente));
+
     if (!paymentData || !paymentData.payment_method_id) {
+      console.log('DEBUG: falló validación de payment_method_id');
       return res.status(400).json({ error: 'Datos de pago incompletos' });
     }
     // Los pagos con tarjeta requieren token; los de tipo ticket (OXXO, etc.) no lo generan
     const requiereToken = paymentData.payment_type_id !== 'ticket' && paymentData.payment_type_id !== 'atm';
     if (requiereToken && !paymentData.token) {
+      console.log('DEBUG: falló validación de token, payment_type_id=', paymentData.payment_type_id);
       return res.status(400).json({ error: 'Datos de pago incompletos (falta token de tarjeta)' });
     }
     if (!cliente || !cliente.nombre || !cliente.telefono) {
+      console.log('DEBUG: falló validación de datos del cliente');
       return res.status(400).json({ error: 'Datos del cliente incompletos' });
     }
 
