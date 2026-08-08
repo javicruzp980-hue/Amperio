@@ -1,4 +1,4 @@
-import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { Resend } from 'resend';
@@ -16,45 +16,125 @@ if (!getApps().length) {
 const db = getFirestore();
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+function generarFolioDinamico() {
+  const now = new Date();
+  const dateStr =
+    now.getFullYear().toString() +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    String(now.getDate()).padStart(2, '0');
+  const randomHex = Math.floor(Math.random() * 0xfff)
+    .toString(16)
+    .toUpperCase()
+    .padStart(3, '0');
+  const randomId = Math.floor(Math.random() * 999).toString().padStart(3, '0');
+  return `CNIEM-${dateStr}-${randomId}${randomHex}`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
   }
 
   try {
-    const data = req.body;
+    const { paymentData, cliente } = req.body;
+
+    if (!paymentData || !paymentData.token) {
+      return res.status(400).json({ error: 'Datos de pago incompletos' });
+    }
+    if (!cliente || !cliente.nombre || !cliente.telefono) {
+      return res.status(400).json({ error: 'Datos del cliente incompletos' });
+    }
 
     // Configurar Mercado Pago
     const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-    const preference = new Preference(client);
+    const payment = new Payment(client);
 
-    const result = await preference.create({
+    // Métodos "ticket" (OXXO, etc.) requieren nombre/apellido del pagador
+    const [firstName, ...restName] = (cliente.nombre || '').trim().split(' ');
+    const lastName = restName.join(' ') || firstName;
+
+    // El Brick entrega los datos del pago listos para la Payment API
+    const result = await payment.create({
       body: {
-        items: [
-          {
-            title: data.title || 'Servicio CNIEM',
-            quantity: 1,
-            unit_price: Number(data.price) || 100,
-          }
-        ],
-        back_urls: {
-          success: `${req.headers.origin}/exito.html`,
-          failure: `${req.headers.origin}/error.html`,
-          pending: `${req.headers.origin}/pending.html`,
+        transaction_amount: Number(paymentData.transaction_amount),
+        token: paymentData.token || undefined, // OXXO/ticket no manda token
+        description: cliente.tipo || 'Servicio CNIEM',
+        installments: Number(paymentData.installments) || 1,
+        payment_method_id: paymentData.payment_method_id,
+        issuer_id: paymentData.issuer_id || undefined,
+        payer: {
+          email: paymentData.payer?.email || cliente.email,
+          first_name: paymentData.payer?.first_name || firstName,
+          last_name: paymentData.payer?.last_name || lastName,
+          identification: paymentData.payer?.identification || undefined,
         },
-        auto_return: 'approved',
-      }
+      },
+      requestOptions: {
+        idempotencyKey: `${cliente.telefono}-${Date.now()}`,
+      },
     });
 
-    // Guardar en Firebase y enviar correo si lo requieres...
-    // (O puedes retornar la init_point para redirigir al usuario)
+    const estadoPago = result.status; // 'approved' | 'in_process' | 'pending' | 'rejected' | ...
+    const esEfectivo = ['ticket', 'atm'].includes(result.payment_type_id);
 
-    return res.status(200).json({ 
-      success: true, 
-      init_point: result.init_point,
-      id: result.id 
+    // pending es normal y esperado en pagos en efectivo (OXXO, etc.)
+    if (!['approved', 'in_process', 'pending'].includes(estadoPago)) {
+      return res.status(200).json({ status: estadoPago, detail: result.status_detail });
+    }
+
+    // Datos del cupón/voucher cuando el pago es en efectivo (OXXO, etc.)
+    const transactionData = result.point_of_interaction?.transaction_data;
+    const ticketUrl = transactionData?.ticket_url || null;
+    const numeroReferencia = transactionData?.reference_id || null;
+
+    const folio = generarFolioDinamico();
+    const orden = {
+      ...cliente,
+      folio,
+      fecha: new Date().toLocaleString('es-MX'),
+      metodoPago: esEfectivo ? 'Efectivo (OXXO/Tienda)' : 'Tarjeta / Pago en línea',
+      estado:
+        estadoPago === 'approved'
+          ? 'Pago Aprobado / Técnico Asignado'
+          : esEfectivo
+          ? 'Pendiente — Esperando pago en OXXO'
+          : 'Pago en proceso',
+      pagoId: result.id,
+      montoPagado: result.transaction_amount,
+      ...(ticketUrl && { ticketUrl, numeroReferencia }),
+    };
+
+    // Guardar en Firestore
+    await db.collection('ordenes').doc(folio).set(orden);
+
+    // Notificar por correo (no bloquea la respuesta si falla)
+    try {
+      await resend.emails.send({
+        from: 'CNIEM <notificaciones@cniem.com>',
+        to: process.env.NOTIFICACIONES_EMAIL,
+        subject: `Nueva orden pagada — ${folio}`,
+        html: `
+          <h2>Nueva orden con pago en línea</h2>
+          <p><strong>Folio:</strong> ${folio}</p>
+          <p><strong>Cliente:</strong> ${orden.nombre}</p>
+          <p><strong>Teléfono:</strong> ${orden.telefono}</p>
+          <p><strong>Dirección:</strong> ${orden.direccion}</p>
+          <p><strong>Servicio:</strong> ${orden.tipo}</p>
+          <p><strong>Estado del pago:</strong> ${estadoPago}</p>
+          <p><strong>Monto:</strong> $${orden.montoPagado}</p>
+          ${ticketUrl ? `<p><strong>Cupón OXXO:</strong> <a href="${ticketUrl}">${ticketUrl}</a></p>` : ''}
+        `,
+      });
+    } catch (emailError) {
+      console.error('No se pudo enviar el correo de notificación:', emailError);
+    }
+
+    return res.status(200).json({
+      status: estadoPago,
+      folio,
+      id: result.id,
+      ...(ticketUrl && { ticketUrl, numeroReferencia }),
     });
-
   } catch (error) {
     console.error('Error detallado:', error);
     return res.status(500).json({ error: error.message });
