@@ -1,7 +1,18 @@
 // netlify/functions/notificar-solicitud.js
-// Envía por correo cada solicitud (pagada o efectivo/transferencia) a CNIEM,
-// usando Resend como proveedor de envío (capa gratuita, sin tarjeta).
+import admin from 'firebase-admin';
 
+// Inicializar Firebase Admin con las variables de Netlify de forma segura
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+    }),
+  });
+}
+
+const db = admin.firestore();
 const CORREO_DESTINO = "asistencia.lg.electric@gmail.com";
 
 function escaparHtml(texto) {
@@ -18,24 +29,48 @@ export default async (req) => {
   }
 
   try {
-    const { orden } = await req.json();
+    const orden = await req.json();
     if (!orden || !orden.folio) {
       return new Response(JSON.stringify({ error: "Falta la información de la orden" }), { status: 400 });
     }
 
+    // 1. GUARDAR LA SOLICITUD EN FIRESTORE EN LA NUBE
+    try {
+      await db.collection('solicitudes').doc(orden.folio).set({
+        folio: orden.folio,
+        nombre: orden.nombre,
+        telefono: orden.telefono,
+        email: orden.email || '',
+        direccion: orden.direccion,
+        tipo: orden.tipo,
+        urgencia: orden.urgencia,
+        descripcion: orden.descripcion,
+        sintomas: orden.sintomas,
+        metodoPago: orden.metodoPago,
+        estado: orden.estado,
+        fecha: orden.fecha,
+        geo: orden.geo || null,
+        creadoEn: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`Orden ${orden.folio} guardada en Firestore exitosamente.`);
+    } catch (dbError) {
+      console.error("Error al guardar en Firestore:", dbError);
+    }
+
+    // 2. ENVIAR CORREO CON RESEND (Tu lógica original)
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       console.error("Falta configurar RESEND_API_KEY en Netlify");
       return new Response(JSON.stringify({ ok: false, error: "Falta configurar RESEND_API_KEY" }), { status: 200 });
     }
 
-    const geoLinea =
+    const geolinea =
       orden.geo && orden.geo.lat && orden.geo.lng
-        ? `<p><strong>📍 Ubicación GPS:</strong> <a href="https://maps.google.com/?q=${orden.geo.lat},${orden.geo.lng}">Ver en mapa</a></p>`
+        ? `<p><strong>📍 Ubicación GPS:</strong> <a href="https://maps.google.com/?q=${orden.geo.lat},${orden.geo.lng}" target="_blank">Ver en Google Maps</a></p>`
         : "";
 
     const html = `
-      <h2>Nueva solicitud de servicio — CNIEM</h2>
+      <h2>Nueva solicitud de servicio - CNIEM</h2>
       <p><strong>Folio:</strong> ${escaparHtml(orden.folio)}</p>
       <p><strong>Método de pago:</strong> ${escaparHtml(orden.metodoPago)}</p>
       <p><strong>Estado:</strong> ${escaparHtml(orden.estado)}</p>
@@ -44,12 +79,12 @@ export default async (req) => {
       <p><strong>Teléfono:</strong> ${escaparHtml(orden.telefono)}</p>
       <p><strong>Correo del cliente:</strong> ${escaparHtml(orden.email) || "No proporcionado"}</p>
       <p><strong>Dirección:</strong> ${escaparHtml(orden.direccion)}</p>
-      ${geoLinea}
+      ${geolinea}
       <p><strong>Tipo de servicio:</strong> ${escaparHtml(orden.tipo)}</p>
       <p><strong>Urgencia:</strong> ${escaparHtml(orden.urgencia)}</p>
       <p><strong>Síntomas reportados:</strong> ${escaparHtml(orden.sintomas)}</p>
       <p><strong>Descripción:</strong><br>${escaparHtml(orden.descripcion)}</p>
-      <p style="color:#888; font-size:12px; margin-top:20px;">Registrado el ${escaparHtml(orden.fecha)}</p>
+      <p style="color:#888; font-size:12px; margin-top:20px;">Registrada el ${escaparHtml(orden.fecha)}</p>
     `;
 
     const resp = await fetch("https://api.resend.com/emails", {
@@ -61,7 +96,7 @@ export default async (req) => {
       body: JSON.stringify({
         from: "CNIEM Solicitudes <onboarding@resend.dev>",
         to: [CORREO_DESTINO],
-        subject: `Nueva solicitud ${orden.folio} — ${orden.tipo || "Servicio"}`,
+        subject: `Nueva solicitud ${orden.folio} - ${orden.tipo} // Servicio`,
         html,
       }),
     });
@@ -76,8 +111,10 @@ export default async (req) => {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+
   } catch (err) {
-    console.error("Error en notificar-solicitud:", err);
-    return new Response(JSON.stringify({ ok: false, error: "Error interno" }), { status: 500 });
+    console.error("Error general en la función:", err);
+    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 };
+
