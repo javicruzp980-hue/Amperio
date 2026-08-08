@@ -38,8 +38,13 @@ export default async function handler(req, res) {
   try {
     const { paymentData, cliente } = req.body;
 
-    if (!paymentData || !paymentData.token) {
+    if (!paymentData || !paymentData.payment_method_id) {
       return res.status(400).json({ error: 'Datos de pago incompletos' });
+    }
+    // Los pagos con tarjeta requieren token; los de tipo ticket (OXXO, etc.) no lo generan
+    const requiereToken = paymentData.payment_type_id !== 'ticket' && paymentData.payment_type_id !== 'atm';
+    if (requiereToken && !paymentData.token) {
+      return res.status(400).json({ error: 'Datos de pago incompletos (falta token de tarjeta)' });
     }
     if (!cliente || !cliente.nombre || !cliente.telefono) {
       return res.status(400).json({ error: 'Datos del cliente incompletos' });
