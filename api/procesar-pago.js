@@ -9,7 +9,15 @@ import { Resend } from 'resend';
 if (!getApps().length) {
   let credenciales;
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    credenciales = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    try {
+      credenciales = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    } catch (e) {
+      const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+      console.log('DEBUG: FIREBASE_SERVICE_ACCOUNT no es JSON válido. Longitud:', raw.length);
+      console.log('DEBUG: primeros 40 caracteres:', JSON.stringify(raw.slice(0, 40)));
+      console.log('DEBUG: últimos 10 caracteres:', JSON.stringify(raw.slice(-10)));
+      throw e;
+    }
   } else {
     credenciales = {
       projectId: process.env.FIREBASE_PROJECT_ID,
