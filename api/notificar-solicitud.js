@@ -4,17 +4,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { orden } = req.body;
+    const orden = req.body;
     if (!orden) {
       return res.status(400).json({ error: 'Falta el objeto orden' });
     }
 
     const resendApiKey = process.env.RESEND_API_KEY;
-    const destinatario = process.env.NOTIFICACIONES_EMAIL;
 
-    if (!resendApiKey || !destinatario) {
-      console.error('Faltan RESEND_API_KEY o NOTIFICACIONES_EMAIL');
-      return res.status(200).json({ success: false, message: 'Notificación no configurada' });
+    if (!resendApiKey) {
+      console.error('Falta RESEND_API_KEY');
+      return res.status(200).json({ success: false, message: 'Falta configurar RESEND_API_KEY' });
     }
 
     const html = `
@@ -37,7 +36,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         from: 'CNIEM Notificaciones <onboarding@resend.dev>',
-        to: [destinatario],
+        to: ['javicruzp980@gmail.com'],
         subject: `Nueva solicitud: ${orden.folio || 'Sin folio'}`,
         html
       })
@@ -47,10 +46,10 @@ export default async function handler(req, res) {
 
     if (!emailResponse.ok) {
       console.error('Error de Resend:', emailResult);
-      return res.status(200).json({ success: false, message: emailResult.message || 'Error enviando correo' });
+      return res.status(200).json({ success: false, message: emailResult });
     }
 
-    return res.status(200).json({ success: true, message: 'Solicitud notificada correctamente' });
+    return res.status(200).json({ success: true, message: 'Solicitud notificada con éxito' });
   } catch (error) {
     console.error('Error en notificar-solicitud:', error);
     return res.status(500).json({ error: error.message });
