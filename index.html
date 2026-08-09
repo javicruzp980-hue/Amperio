@@ -713,7 +713,6 @@
 </main>
 
 <footer>© 2026 CNIEM — Tecnología y Servicios Eléctricos Profesionales</footer>
-
 <!-- SDK de Firebase con Firestore y Storage Modular -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -734,6 +733,17 @@
     const analytics = getAnalytics(app);
     const db = getFirestore(app);
     const storage = getStorage(app);
+
+    // Exponer herramientas al ámbito global para el formulario
+    window.firebaseDB = db;
+    window.firebaseStorage = storage;
+    window.fsCollection = collection;
+    window.fsAddDoc = addDoc;
+    window.storageRef = ref;
+    window.storageUpload = uploadBytes;
+    window.storageGetUrl = getDownloadURL;
+</script>
+
 
     // Exponer herramientas al ámbito global para usarlas en las funciones del formulario
     window.firebaseDB = db;
