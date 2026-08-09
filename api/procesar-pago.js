@@ -4,14 +4,20 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { Resend } from 'resend';
 
 // Inicializar Firebase Admin
+// Soporta dos formas: FIREBASE_SERVICE_ACCOUNT (JSON completo, más confiable)
+// o las 3 variables separadas (FIREBASE_PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY)
 if (!getApps().length) {
-  initializeApp({
-    credential: cert({
+  let credenciales;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    credenciales = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  } else {
+    credenciales = {
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
+    };
+  }
+  initializeApp({ credential: cert(credenciales) });
 }
 const db = getFirestore();
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -112,8 +118,12 @@ export default async function handler(req, res) {
       ...(ticketUrl && { ticketUrl, numeroReferencia }),
     };
 
-    // Guardar en Firestore
-    await db.collection('ordenes').doc(folio).set(orden);
+    // Guardar en Firestore (no debe tapar la confirmación si el pago ya se cobró)
+    try {
+      await db.collection('ordenes').doc(folio).set(orden);
+    } catch (dbError) {
+      console.error('ALERTA: pago procesado pero falló el guardado en Firestore. Folio:', folio, 'Pago ID:', result.id, dbError);
+    }
 
     // Notificar por correo (no bloquea la respuesta si falla)
     try {
@@ -130,6 +140,7 @@ export default async function handler(req, res) {
           <p><strong>Servicio:</strong> ${orden.tipo}</p>
           <p><strong>Estado del pago:</strong> ${estadoPago}</p>
           <p><strong>Monto:</strong> $${orden.montoPagado}</p>
+          <p><strong>Pago ID (Mercado Pago):</strong> ${result.id}</p>
           ${ticketUrl ? `<p><strong>Cupón OXXO:</strong> <a href="${ticketUrl}">${ticketUrl}</a></p>` : ''}
         `,
       });
