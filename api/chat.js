@@ -41,7 +41,7 @@ Si te preguntan algo fuera del tema de servicios eléctricos, responde amablemen
       }]
     };
 
-    const modelo = 'gemini-2.5-flash-lite';
+    const modelo = 'gemini-3.5-flash-lite';
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`,
       {
